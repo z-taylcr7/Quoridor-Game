@@ -1,0 +1,442 @@
+#include "AIController.h"
+#include <utility>
+#include <cstring>
+#include <vector>
+#include <queue>
+const int PARAMETER_BOARD=1;
+const int PARAMETER_DIST_MINUS=4;
+const int PARAMETER_DIST_ADD=7;
+int leftBoard[11]={0,99,169,219,260,299,333,349,359,360,361};
+extern int ai_side;
+int op_side;
+std::string ai_name = "chuanshanjia";
+int r;
+int table[9][9];
+int board[8][8];
+int b[9][9];
+int xx[2];
+int yy[2];
+int ss[2];
+
+
+int side[9][9][4];//???????
+
+std::pair<int,int>history;
+void init() {
+	/* Your code here */
+    r=0;
+    for(int i=0;i<9;i++){
+        for(int j=0;j<9;j++){
+            table[i][j]=0;
+            side[i][j][0]=(j==0)?1:0;
+            side[i][j][1]=(i==0)?1:0;
+            side[i][j][2]=(j==8)?1:0;
+            side[i][j][3]=(i==8)?1:0;
+        }
+    }
+    table[0][4]=1;table[8][4]=2;
+    xx[1]=0;yy[1]=4;xx[0]=8;yy[0]=4;
+    ss[0]=ss[1]=10;
+    op_side=1-ai_side;
+    history= std::make_pair(xx[ai_side],yy[ai_side]);
+}
+
+
+/* The following notation is based on player 0's perspective
+ * Rows are labeled 0 through 8 from player 1's side to player 0's side
+ * Columns are labeled 0 through 8 from player 0's left to right
+ * A coordinate is recorded as the row followed by the column, for example, player 0's pawn starts on (8, 4)
+ * A pawn move is recorded as the new coordinate occupied by the pawn
+ * A fence placement is recorded as the coordinate of the square whose bottom-right corner fits the center of the wall
+ * A typecode is defined as follows: 0: pawn move
+ *                                   1: vertical fence placement
+ *                                   2: parallel fence placement
+ * An action is defined as (typecode, (row-coordinate, column-coordinate))
+ * You need to analyze your opponent's action and return your own action
+ * If the typecode of your opponent's action is '-1', it means that you are on the offensive.
+ */
+
+//    move options:
+//    0: left
+//    1: up
+//    2: right
+//    3: down
+void move(int &x,int &y,int op){
+    switch (op) {
+        case 0: --y;break;
+        case 1: --x;break;
+        case 2: ++y;break;
+        case 3: ++x;break;
+        default: break;
+    }
+}
+void pawn_move(int p,std::pair<int,int >loc){
+    table[xx[p]][yy[p]]=0;
+    int _x=loc.first,_y=loc.second;
+    table[_x][_y]=(p==0)?2:1;
+    xx[p]=_x;yy[p]=_y;
+}
+//单层搜索
+std::vector<std::pair<int ,int>> next_place(int p) {
+    std::vector<std::pair<int, int>> res;
+    for (int i = 0; i < 4; i++) {
+        int x = xx[p], y = yy[p];
+        if (side[x][y][i]==0) {
+            move(x, y, i);
+            if (table[x][y] == 0)res.push_back(std::make_pair(x, y));
+            else {
+                if (side[x][y][i]==0) {
+                    move(x, y, i);
+                    res.push_back(std::make_pair(x, y));
+                } else {
+                    int i1 = (i + 1) % 4;
+                    int i2 = (i + 3) % 4;
+                    int nx = x, ny = y;
+                    if (side[x][y][i1]==0) {
+                        move(x, y, i1);
+                        res.push_back(std::make_pair(x, y));
+                        x = nx;y = ny;
+                    }
+                    if (side[x][y][i2]==0) {
+                        move(x, y, i2);
+                        res.push_back(std::make_pair(x, y));
+                        x = nx;y = ny;
+                    }
+                }
+            }
+        }
+    }
+    return res;
+}
+std::queue<std::pair<int,int>> que;
+void bfs(int x,int y){
+    for(int i=0;i<9;i++){
+        for(int j=0;j<9;j++){
+            b[i][j]=-1;
+        }
+    }
+    b[x][y]=0;
+    que.push(std::make_pair(x,y));
+    while(!que.empty()) {
+        int xx = que.front().first;
+        int yy = que.front().second;
+        que.pop();
+
+        int a = 0, w = 0, d = 0, s = 0;
+        if (side[xx][yy][0] == 0 && (b[xx][yy - 1] == -1 || b[xx][yy - 1] > b[xx][yy] + 1)) {
+            a = 1;
+            b[xx][yy - 1] = b[xx][yy] + 1;
+        }
+        if (side[xx][yy][1] == 0 && (b[xx - 1][yy] == -1 || b[xx - 1][yy] > b[xx][yy] + 1)) {
+            w = 1;
+            b[xx - 1][yy] = b[xx][yy] + 1;
+        }
+        if (side[xx][yy][2] == 0 && (b[xx][yy + 1] == -1 || b[xx][yy + 1] > b[xx][yy] + 1)) {
+            d = 1;
+            b[xx][yy + 1] = b[xx][yy] + 1;
+        }
+        if (side[xx][yy][3] == 0 && (b[xx + 1][yy] == -1 || b[xx + 1][yy] > b[xx][yy] + 1)) {
+            s = 1;
+            b[xx + 1][yy] = b[xx][yy] + 1;
+        }
+        if (a)que.push(std::make_pair(xx, yy - 1));
+        if (w)que.push(std::make_pair(xx - 1, yy));
+        if (d)que.push(std::make_pair(xx, yy + 1));
+        if (s)que.push(std::make_pair(xx + 1, yy));
+    }
+}
+int dis(int x,int y,int p){
+    int dis=-1;
+        for(int i=0;i<9;i++){
+            for(int j=0;j<9;j++){
+                b[i][j]=-1;
+            }
+        }
+        b[x][y]=0;
+    que.push(std::make_pair(x,y));
+    while(!que.empty()){
+        int xx=que.front().first;
+        int yy=que.front().second;
+        que.pop();
+        if(p==0&&xx==0){
+            dis=b[xx][yy];while(!que.empty())que.pop();break;
+
+        }else if(p==1&&xx==8){
+            dis=b[xx][yy];while(!que.empty())que.pop();break;
+        }
+        int a=0,w=0,d=0,s=0;
+        if(side[xx][yy][0]==0&&(b[xx][yy-1]==-1||b[xx][yy-1]>b[xx][yy]+1)){
+            a=1;b[xx][yy-1]=b[xx][yy]+1;
+        }
+        if(side[xx][yy][1]==0&&(b[xx-1][yy]==-1||b[xx-1][yy]>b[xx][yy]+1)){
+            w=1;b[xx-1][yy]=b[xx][yy]+1;
+        }
+        if(side[xx][yy][2]==0&&(b[xx][yy+1]==-1||b[xx][yy+1]>b[xx][yy]+1)){
+            d=1;b[xx][yy+1]=b[xx][yy]+1;
+        }
+        if(side[xx][yy][3]==0&&(b[xx+1][yy]==-1||b[xx+1][yy]>b[xx][yy]+1)){
+            s=1;b[xx+1][yy]=b[xx][yy]+1;
+        }
+        if(a)que.push(std::make_pair(xx,yy-1));
+        if(w)que.push(std::make_pair(xx-1,yy));
+        if(d)que.push(std::make_pair(xx,yy+1));
+        if(s)que.push(std::make_pair(xx+1,yy));
+    }
+    return dis;
+};
+//    board options:
+//    1: vertical
+//    2: parallel
+
+void set_board(int x,int y,int p, int op){
+    board[x][y]=op;
+    switch (op) {
+        case 1:
+            side[x][y][2]=1;
+            side[x+1][y][2]=1;
+            side[x][y+1][0]=1;
+            side[x+1][y+1][0]=1;break;
+        case 2:
+            side[x][y][3]=1;
+            side[x+1][y][1]=1;
+            side[x][y+1][3]=1;
+            side[x+1][y+1][1]=1;
+            break;
+    }
+    ss[p]--;
+
+};
+void reset_board(int x,int y,int p,int op){
+    board[x][y]=0;
+    switch (op) {
+        case 1:
+            side[x][y][2]=0;
+            side[x+1][y][2]=0;
+            side[x][y+1][0]=0;
+            side[x+1][y+1][0]=0;break;
+        case 2:
+            side[x][y][3]=0;
+            side[x+1][y][1]=0;
+            side[x][y+1][3]=0;
+            side[x+1][y+1][1]=0;
+            break;
+    }
+    ss[p]++;
+}
+bool block_check(int x,int y,int op){
+    bool res1=false,res2= false;
+    set_board(x,y,ai_side,op);
+    bfs(xx[0],yy[0]);
+    for(int i=0;i<9;i++){
+        if(b[0][i]!=-1){
+            res1= true;break;
+        }
+    }
+    bfs(xx[1],yy[1]);
+    for(int i=0;i<9;i++){
+        if(b[8][i]!=-1){
+            res2= true;break;
+        }
+    }
+    reset_board(x,y,ai_side,op);
+    return res1&&res2;
+};
+bool overlap_check(int x,int y,int op){
+    bool res=true;
+    switch (op) {
+        case 1: //vertical
+            if(x!=0)res=res&&(board[x-1][y]!=1);
+            if(x!=7)res=res&&(board[x+1][y]!=1);
+            break;
+        case 2: //parallel
+            if(y!=0)res=res&&(board[x][y-1]!=2);
+            if(y!=7)res=res&&(board[x][y+1]!=2);
+            break;
+    }
+    return res;
+}
+bool can_set_board(int x,int y,int op){
+    if(board[x][y]!=0)return false;
+    return overlap_check(x,y,op)&&block_check(x,y,op);
+}
+int end(){
+    if(xx[0]==0)return 2;
+    if(xx[1]==8)return 1;
+    return 0;
+}
+
+int score(){
+    int ai_dis= dis(xx[ai_side],yy[ai_side],ai_side);
+    int op_dis= dis(xx[op_side],yy[op_side],op_side);
+    return -PARAMETER_DIST_ADD*(10-op_dis)*(10-op_dis)*(10-op_dis)+PARAMETER_DIST_MINUS*(10-ai_dis)*(10-ai_dis)*(10-ai_dis)
+    +PARAMETER_BOARD*(leftBoard[ss[ai_side]]-leftBoard[ss[op_side]]);
+
+}
+std::vector<std::pair<int,int>> vec;
+//当前情形下，下一步所有分支中分数最低的情况
+std::pair<int,std::pair<int,int>> min_score(int& res){
+    std::vector<std::pair<int,int>> Q= next_place(op_side);
+    int val=1000000;
+    int option=0;
+    std::pair<int,int>origin_loc= std::make_pair(xx[op_side],yy[op_side]);
+    std::pair<int,int>move_loc;
+    std::pair<int,int>vert_loc;
+    std::pair<int,int>para_loc;
+    for(auto p:Q){
+        pawn_move(op_side,p);
+        int sc=score();
+        if(val>sc){
+            val=sc;move_loc=p;
+        }
+        pawn_move(op_side,origin_loc);
+    }
+    if(ss[op_side]){
+        //parallel
+        int st=(ai_side==1)?0:7;
+        int ed=(ai_side==1)?7:0;
+        int k=(ai_side==1)?1:-1;
+        for(int i=st;i!=ed;i+=k){
+            for(int j=st;j!=ed;j+=k){
+                if(can_set_board(i,j,2)){
+                    set_board(i,j,op_side,2);
+                    int sc=score();
+                    if(val>sc){
+                        option=2;para_loc = std::make_pair(i,j);
+                    }
+                    reset_board(i,j,op_side,2);
+                }
+            }
+        }
+        //vert
+        for(int i=st;i!=ed;i+=k){
+            for(int j=st;j!=ed;j+=k){
+                if(can_set_board(i,j,1)){
+                    set_board(i,j,op_side,1);
+                    int sc=score();
+                    if(val>sc){
+                        option=1;vert_loc= std::make_pair(i,j);
+                    }
+                    reset_board(i,j,op_side,1);
+                }
+            }
+        }
+    }
+    res=val;
+    switch (option) {
+        case 0:return std::make_pair(0,move_loc);break;
+        case 1:return std::make_pair(1,vert_loc);break;
+        case 2:return std::make_pair(2,para_loc);break;
+        default:return std::make_pair(0,move_loc);
+    }
+
+
+}
+std::pair<int, std::pair<int, int> > fetch_next_place(){
+    //move
+    int val=-1000000;
+    int option=0;
+    std::pair<int,int>origin_loc= std::make_pair(xx[ai_side],yy[ai_side]);
+    std::pair<int,int>move_loc;
+    std::pair<int,int>vert_loc;
+    std::pair<int,int>para_loc;
+    for(auto p:vec){
+        if(p==history&&vec.size()!=1)continue;
+        pawn_move(ai_side,p);
+        int sc;
+        min_score(sc);
+        if(val<sc){
+            val=sc;move_loc=p;
+        }
+        pawn_move(ai_side,origin_loc);
+    }
+    if(ss[ai_side]&&r>3){
+
+        //parallel
+        int st=(ai_side==1)?0:7;
+        int ed=(ai_side==1)?7:0;
+        int k=(ai_side==1)?1:-1;
+        for(int i=st;i!=ed;i+=k){
+            for(int j=st;j!=ed;j+=k){
+                if(can_set_board(i,j,2)){
+                    set_board(i,j,ai_side,2);
+                    int sc;
+                    min_score(sc);
+                    if(val<sc){
+                        option=2;para_loc = std::make_pair(i,j);
+                    }
+                    reset_board(i,j,ai_side,2);
+                }
+            }
+        }
+        //vert
+        for(int i=st;i!=ed;i+=k){
+            for(int j=st;j!=ed;j+=k){
+                if(can_set_board(i,j,1)){
+                    set_board(i,j,ai_side,1);
+                    int sc;
+                    min_score(sc);
+                    if(val<sc){
+                        option=1;vert_loc= std::make_pair(i,j);
+                    }
+                    reset_board(i,j,ai_side,1);
+                }
+            }
+        }
+    }
+    switch (option) {
+        case 0:return std::make_pair(0,move_loc);break;
+        case 1:return std::make_pair(1,vert_loc);break;
+        case 2:return std::make_pair(2,para_loc);break;
+        default:return std::make_pair(0,move_loc);
+    }
+}
+bool specialist(std::pair<int, std::pair<int, int> >&loc){
+    return false;
+}
+void showboards(){
+    std::cerr<<"round "<<r<<std::endl;
+   for(int i=0;i<8;i++){
+       for(int j=0;j<8;j++)std::cerr<<board[i][j]<<' ';
+       std::cerr<<std::endl;
+   }
+}
+void shownext(){
+    std::cerr<<"next loc: "<<r<<std::endl;
+    for(auto p:vec){
+        std::cerr<<p.first<<'|'<<p.second<<"  ";
+    }std::cerr<<std::endl;
+}
+std::pair<int, std::pair<int, int> > action(std::pair<int, std::pair<int, int> > loc) {
+	/* Your code here */
+    r++;
+    int _x=loc.second.first;
+    int _y=loc.second.second;
+    switch (loc.first) {
+        case 0:
+            pawn_move(op_side,loc.second);break;
+        case 1:
+            set_board(_x,_y,op_side,1);
+            break;
+        case 2:
+            set_board(_x,_y,op_side,2);
+            break;
+    }
+    vec.clear();
+    vec= next_place(ai_side);
+    //showboards();
+    //shownext();
+    std::pair<int,std::pair<int,int>> p=fetch_next_place();
+    switch (p.first) {
+        case 0:
+            pawn_move(ai_side,p.second);break;
+        case 1:
+            set_board(p.second.first,p.second.second,ai_side,1);
+            break;
+        case 2:
+            set_board(p.second.first,p.second.second,ai_side,2);
+            break;
+    }
+    if(p.first==0)history=p.second;
+
+    return p;
+}
